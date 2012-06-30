@@ -2156,17 +2156,24 @@ void browse_radar::update()
 #define NUM_BROWSE_RADARS 6
 
 // Load a grid or scenario ..
-Sint32 browse2(screen *screenp)
+Sint32 browse(screen *screenp)
 {
+    remove_all_objects(screenp);  // kill current obs
+    for (int j=0; j < 60; j++)
+        screenp->scentext[j][0] = 0;
+        
     SDL_Rect mapAreas[NUM_BROWSE_RADARS];
     browse_radar* radars[NUM_BROWSE_RADARS];
+    oblink  *oblist[NUM_BROWSE_RADARS];
+    oblink  *fxlist[NUM_BROWSE_RADARS];  // fx--explosions, etc.
+    oblink  *weaplist[NUM_BROWSE_RADARS];  // weapons
     
     for(int i = 0; i < NUM_BROWSE_RADARS; i++)
     {
-        mapAreas[i].x = 20 + (RADAR_X + 10)*i;
+        mapAreas[i].x = 10 + (screenp->maxx + 10)*i;
         mapAreas[i].y = 20;
-        mapAreas[i].w = RADAR_X;
-        mapAreas[i].h = RADAR_Y;
+        mapAreas[i].w = screenp->maxx;
+        mapAreas[i].h = screenp->maxy;
         
         char buf[20];
         snprintf(buf, 20, "scen%d", i);
@@ -2174,75 +2181,18 @@ Sint32 browse2(screen *screenp)
         
         browse_radar* r = new browse_radar(mapAreas[i].x, mapAreas[i].y, screenp);
         r->start();
+        radars[i] = r;
+        oblist[i] = screenp->oblist;
+        screenp->oblist = NULL;
+        fxlist[i] = screenp->fxlist;
+        screenp->fxlist = NULL;
+        weaplist[i] = screenp->weaplist;
+        screenp->weaplist = NULL;
+        
+		remove_all_objects(screenp);  // kill current obs
+		for (int j=0; j < 60; j++)
+			screenp->scentext[j][0] = 0;
     }
-    
-    bool done = false;
-	while (!done)
-	{
-		// Reset the timer count to zero ...
-		reset_timer();
-
-		if (screenp->end)
-			break;
-
-		//buffers: get keys and stuff
-		get_input_events(POLL);
-		
-		// Wait for a key to be pressed ..
-		if(mykeyboard[SDLK_q])
-            done = true;
-        
-        //screenp->clearscreen();
-        
-        for(int i = 0; i < NUM_BROWSE_RADARS; i++)
-        {
-            radars[i]->draw();
-        }
-        
-        //screenp->draw_box(x, y, x+maxlength*(sizex+1), y+sizey+1, backcolor, 1, 1);
-		//write_xy(x, y, editstring, forecolor, 1);
-		screenp->buffer_to_screen(0, 0, 320, 200);
-	}
-	
-    while (mykeyboard[SDLK_q])
-        get_input_events(WAIT);
-	
-    for(int i = 0; i < NUM_BROWSE_RADARS; i++)
-    {
-        delete radars[i];
-    }
-    
-    load_scenario("scen1", screenp);
-    
-	return 1;
-}
-
-
-
-
-
-// Load a grid or scenario ..
-Sint32 browse(screen *screenp)
-{
-    SDL_Rect mapAreas[4] = {
-                            {20, 20, 80, 80},
-                            {100, 20, 80, 80},
-                            {20, 100, 80, 80},
-                            {100, 100, 80, 80}
-                           };
-    
-    
-    load_scenario("scen1", screenp);
-    browse_radar radar1(mapAreas[0].x, mapAreas[0].y, screenp);
-    radar1.start();
-    
-    load_scenario("scen2", screenp);
-    browse_radar radar2(mapAreas[1].x, mapAreas[1].y, screenp);
-    radar2.start();
-    
-    load_scenario("scen3", screenp);
-    browse_radar radar3(mapAreas[2].x, mapAreas[2].y, screenp);
-    radar3.start();
     
     bool done = false;
 	while (!done)
@@ -2262,9 +2212,14 @@ Sint32 browse(screen *screenp)
         
         screenp->clearscreen();
         
-        radar1.draw();
-        radar2.draw();
-        radar3.draw();
+        for(int i = 0; i < NUM_BROWSE_RADARS; i++)
+        {
+            screenp->oblist = oblist[i];
+            screenp->fxlist = fxlist[i];
+            screenp->weaplist = weaplist[i];
+            radars[i]->draw();
+        }
+        
         //screenp->draw_box(x, y, x+maxlength*(sizex+1), y+sizey+1, backcolor, 1, 1);
 		//write_xy(x, y, editstring, forecolor, 1);
 		screenp->buffer_to_screen(0, 0, 320, 200);
@@ -2273,5 +2228,21 @@ Sint32 browse(screen *screenp)
     while (mykeyboard[SDLK_q])
         get_input_events(WAIT);
 	
+    for(int i = 0; i < NUM_BROWSE_RADARS; i++)
+    {
+        screenp->oblist = oblist[i];
+        screenp->fxlist = fxlist[i];
+        screenp->weaplist = weaplist[i];
+		remove_all_objects(screenp);  // kill current obs
+        delete radars[i];
+    }
+    
+    load_scenario("test", screenp);
+    
 	return 1;
 }
+
+
+
+
+

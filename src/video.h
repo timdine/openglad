@@ -24,10 +24,7 @@
 class video
 {
 	public:
-        bool isTemp;  // Not the real video surface
-	
 		video();
-		video(bool isTemp);
 		~video();
 		void clearscreen();
 		void clearbuffer();

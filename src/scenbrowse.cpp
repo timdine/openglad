@@ -1683,39 +1683,69 @@ Sint32 do_load(screen *ascreen)
 
 
 
+void load_level_list(char**& level_list, int* level_list_length)
+{
+    // TODO: Do some real directory browsing
+    *level_list_length = 6;
+    level_list = new char*[6];
+    
+    level_list[0] = new char[40];
+    strcpy(level_list[0], "scen0");
+    level_list[1] = new char[40];
+    strcpy(level_list[1], "scen1");
+    level_list[2] = new char[40];
+    strcpy(level_list[2], "scen2");
+    level_list[3] = new char[40];
+    strcpy(level_list[3], "scen3");
+    level_list[4] = new char[40];
+    strcpy(level_list[4], "scen4");
+    level_list[5] = new char[40];
+    strcpy(level_list[5], "scen5");
+}
 
-
-#define NUM_BROWSE_RADARS 6
+#define NUM_BROWSE_RADARS 3
 
 // Load a grid or scenario ..
 Sint32 browse(screen *screenp)
 {
+    // Clear all objects from the current level
     remove_all_objects(screenp);  // kill current obs
     for (int j=0; j < 60; j++)
         screenp->scentext[j][0] = 0;
-        
+    
+	text* loadtext = new text(screenp);
+    
+    // Here are the browser variables
     SDL_Rect mapAreas[NUM_BROWSE_RADARS];
     radar* radars[NUM_BROWSE_RADARS];
-    oblink  *oblist[NUM_BROWSE_RADARS];
-    oblink  *fxlist[NUM_BROWSE_RADARS];  // fx--explosions, etc.
-    oblink  *weaplist[NUM_BROWSE_RADARS];  // weapons
+    oblink* oblist[NUM_BROWSE_RADARS];
+    oblink* fxlist[NUM_BROWSE_RADARS];  // fx--explosions, etc.
+    oblink* weaplist[NUM_BROWSE_RADARS];  // weapons
+    char* level_name[NUM_BROWSE_RADARS];
     
+    int level_list_length = 0;
+    char** level_list = NULL;
+    load_level_list(level_list, &level_list_length);
+    
+    int current_level_index = 1;
+    
+    // Load the radars (minimaps)
     for(int i = 0; i < NUM_BROWSE_RADARS; i++)
     {
-        mapAreas[i].x = 10 + (screenp->maxx + 10)*i;
-        mapAreas[i].y = 20;
         mapAreas[i].w = screenp->maxx;
-        mapAreas[i].h = screenp->maxy;
+        mapAreas[i].h = screenp->maxy - 10;
+        mapAreas[i].x = 10;
+        mapAreas[i].y = 10 + (screenp->maxy + 0)*i;
         
-        char buf[20];
-        snprintf(buf, 20, "scen%d", i);
-        load_scenario(buf, screenp);
+        load_scenario(level_list[current_level_index + i], screenp);
         
         radar* r = new radar(NULL, screenp, 0);
-        r->xloc = mapAreas[i].x;
+        r->xloc = mapAreas[i].x + mapAreas[i].w/2;
         r->yloc = mapAreas[i].y;
         r->start();
         radars[i] = r;
+        
+        // Store this level's objects
         oblist[i] = screenp->oblist;
         screenp->oblist = NULL;
         fxlist[i] = screenp->fxlist;
@@ -1723,6 +1753,9 @@ Sint32 browse(screen *screenp)
         weaplist[i] = screenp->weaplist;
         screenp->weaplist = NULL;
         
+        level_name[i] = strdup(screenp->scenario_title);
+        
+        // Clear the level so we can load the next one
 		remove_all_objects(screenp);  // kill current obs
 		for (int j=0; j < 60; j++)
 			screenp->scentext[j][0] = 0;
@@ -1737,25 +1770,33 @@ Sint32 browse(screen *screenp)
 		if (screenp->end)
 			break;
 
-		//buffers: get keys and stuff
+		// Get keys and stuff
 		get_input_events(POLL);
 		
-		// Wait for a key to be pressed ..
+		// Quit if 'q' is pressed
 		if(mykeyboard[SDLK_q])
             done = true;
         
+        // Draw
         screenp->clearscreen();
         
         for(int i = 0; i < NUM_BROWSE_RADARS; i++)
         {
+            // Set the current objects
             screenp->oblist = oblist[i];
             screenp->fxlist = fxlist[i];
             screenp->weaplist = weaplist[i];
+            
+            int x = radars[i]->xloc;
+            int y = radars[i]->yloc;
+            int w = radars[i]->sizex;
+            int h = radars[i]->sizey;
+			screenp->draw_button(x - 1, y - 1, x + w + 1, y + h - 15, 1, 1);
+            // Draw radar
             radars[i]->draw();
+            loadtext->write_xy(mapAreas[i].x, mapAreas[i].y + mapAreas[i].h, level_name[i], RED, 1);
         }
         
-        //screenp->draw_box(x, y, x+maxlength*(sizex+1), y+sizey+1, backcolor, 1, 1);
-		//write_xy(x, y, editstring, forecolor, 1);
 		screenp->buffer_to_screen(0, 0, 320, 200);
 	}
 	
@@ -1769,9 +1810,19 @@ Sint32 browse(screen *screenp)
         screenp->weaplist = weaplist[i];
 		remove_all_objects(screenp);  // kill current obs
         delete radars[i];
+        free(level_name[i]);
     }
     
+    delete loadtext;
+    
+    for(int i = 0; i < level_list_length; i++)
+    {
+        delete[] level_list[i];
+    }
+    delete[] level_list;
+    
     load_scenario("test", screenp);
+    screenp->buffer_to_screen(0, 0, 320, 200);
     
 	return 1;
 }

@@ -33,7 +33,6 @@ class screen : public video
 		screen();  // called with '1' for numviews
 		screen(short howmany);
 
-        void init(short howmany);
 		void reset(short howmany);
 		~screen();
 		void cleanup(short);

@@ -40,7 +40,6 @@ Screen *E_Screen;
 bool retreat;
 
 video::video()
-    : isTemp(false)
 {
 	Sint32 i;
 	const char *qresult;
@@ -126,60 +125,13 @@ video::video()
 */
 }
 
-video::video(bool isTemp)
-    : isTemp(isTemp)
-{
-	Sint32 i;
-	const char *qresult;
-	RenderEngine render;
-	fullscreen = 0;
-    mouse_mult = 1;
-    mult = 1;
-    font_mult = 1;
-    render = NoZoom;
-
-	set_mult(mouse_mult);
-
-	fadeDuration = 500;
-    
-	// Load our palettes ..
-	load_and_set_palette("our.pal", ourpalette);
-	load_palette("our.pal", redpalette);
-
-	// Create the red-shifted palette
-	for (i=32; i < 256; i++)
-	{
-		redpalette[i*3+1] /= 2;
-		redpalette[i*3+2] /= 2;
-	}
-
-	load_palette("our.pal", bluepalette);
-
-	// Create the blue-shifted palette
-	//for (i=32; i < 256; i++)
-	//{
-	//	bluepalette[i*3+0] /= 2;
-	//	bluepalette[i*3+1] /= 2;
-	//}
-
-	screen = SDL_CreateRGBSurface(SDL_SWSURFACE,320*mult,200*mult,32,0,0,0,0);
-	fontbuffer = SDL_CreateRGBSurface(SDL_SWSURFACE,320*font_mult,200*font_mult,32,0,0,0,0);
-	fontcolorkey = SDL_MapRGB(fontbuffer->format,20,0,0);
-	SDL_SetColorKey(fontbuffer,SDL_SRCCOLORKEY,fontcolorkey);
-	SDL_FillRect(fontbuffer,NULL,fontcolorkey);
-}
-
 video::~video()
 {
+	E_Screen->Quit();
+	delete E_Screen;
 	SDL_FreeSurface(screen);
 	SDL_FreeSurface(fontbuffer);
-	
-    if(!isTemp)
-    {
-        E_Screen->Quit();
-        delete E_Screen;
-        SDL_Quit();
-    }
+	SDL_Quit();
 }
 
 unsigned char * video::getbuffer()

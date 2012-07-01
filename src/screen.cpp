@@ -84,19 +84,8 @@ Uint32 random(Uint32 x)
 //  are found in this object.
 // ************************************************************
 
-screen::screen()
-    : video(true)
-{
-    init(1);
-}
 
-screen::screen(short howmany)
-    : video()
-{
-    init(howmany);
-}
-
-void screen::init(short howmany)
+screen::screen(short howmany):video()
 {
 	Sint32 i, j;
 	const char *qresult;

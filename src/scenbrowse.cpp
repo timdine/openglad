@@ -1714,24 +1714,75 @@ void getLevelStats(screen* screenp, int* max_enemy_level, float* average_enemy_l
 }
 
 
+#include <list>
+#include <string>
+
+#include <cstdio>
+#include <sys/stat.h>
+#include <dirent.h>
+
+using namespace std;
+
+bool isDir(const string& filename)
+{
+    struct stat status;
+    stat(filename.c_str(), &status);
+
+    return (status.st_mode & S_IFDIR);
+}
+
+list<string> list_files(const string& dirname)
+{
+    list<string> fileList;
+    
+    DIR* dir = opendir(dirname.c_str());
+    dirent* entry;
+    
+    while ((entry = readdir(dir)) != NULL)
+    {
+        #ifdef WIN32
+        if(!isDir(dirname + "/" + entry->d_name))
+        #else
+        if(entry->d_type != DT_DIR)
+        #endif
+            fileList.push_back(entry->d_name);
+    }
+ 
+    closedir(dir);
+    
+    fileList.sort();
+    
+    
+    return fileList;
+}
+
+
+
 void load_level_list(char**& level_list, int* level_list_length)
 {
     // TODO: Do some real directory browsing
-    *level_list_length = 6;
-    level_list = new char*[6];
+    list<string> ls = list_files("scen");
+    for(list<string>::iterator e = ls.begin(); e != ls.end();)
+    {
+        if(e->size() > 4 && e->substr(e->size() - 4, 4) == ".fss")
+        {
+            *e = e->substr(0, e->size() - 4);
+            e++;
+        }
+        else
+            e = ls.erase(e);
+    }
     
-    level_list[0] = new char[40];
-    strcpy(level_list[0], "scen0");
-    level_list[1] = new char[40];
-    strcpy(level_list[1], "scen1");
-    level_list[2] = new char[40];
-    strcpy(level_list[2], "scen2");
-    level_list[3] = new char[40];
-    strcpy(level_list[3], "scen3");
-    level_list[4] = new char[40];
-    strcpy(level_list[4], "scen4");
-    level_list[5] = new char[40];
-    strcpy(level_list[5], "scen5");
+    *level_list_length = ls.size();
+    level_list = new char*[ls.size()];
+    
+    list<string>::iterator e = ls.begin();
+    for(unsigned int i = 0; i < ls.size(); i++)
+    {
+        level_list[i] = new char[40];
+        strncpy(level_list[i], e->c_str(), 40);
+        e++;
+    }
 }
 
 

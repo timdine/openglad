@@ -1681,6 +1681,37 @@ Sint32 do_load(screen *ascreen)
 
 
 
+void getLevelStats(screen* screenp, int* max_enemy_level, float* average_enemy_level, int* num_enemies)
+{
+    int num = 0;
+    int level_sum = 0;
+    int max_level = 0;
+    
+    oblink* fx = screenp->oblist;
+	while(fx)
+	{
+		if(fx->ob)
+		{
+		    walker* ob = fx->ob;
+		    if(ob->team_num != 0 && ob->query_order() == ORDER_LIVING)
+		    {
+                num++;
+                level_sum += ob->stats->level;
+                if(ob->stats->level > max_level)
+                    max_level = ob->stats->level;
+		    }
+		}
+		
+		fx = fx->next;
+	}
+	
+	*num_enemies = num;
+	*max_enemy_level = max_level;
+	if(num == 0)
+        *average_enemy_level = 0;
+    else
+        *average_enemy_level = level_sum/float(num);
+}
 
 
 void load_level_list(char**& level_list, int* level_list_length)
@@ -1722,6 +1753,9 @@ Sint32 browse(screen *screenp)
     oblink* fxlist[NUM_BROWSE_RADARS];  // fx--explosions, etc.
     oblink* weaplist[NUM_BROWSE_RADARS];  // weapons
     char* level_name[NUM_BROWSE_RADARS];
+    int max_enemy_level[NUM_BROWSE_RADARS];
+    float average_enemy_level[NUM_BROWSE_RADARS];
+    int num_enemies[NUM_BROWSE_RADARS];
     
     int level_list_length = 0;
     char** level_list = NULL;
@@ -1741,9 +1775,11 @@ Sint32 browse(screen *screenp)
         
         radar* r = new radar(NULL, screenp, 0);
         r->xloc = mapAreas[i].x + mapAreas[i].w/2;
-        r->yloc = mapAreas[i].y;
+        r->yloc = mapAreas[i].y + 10;
         r->start();
         radars[i] = r;
+        
+        getLevelStats(screenp, &max_enemy_level[i], &average_enemy_level[i], &num_enemies[i]);
         
         // Store this level's objects
         oblist[i] = screenp->oblist;
@@ -1794,10 +1830,19 @@ Sint32 browse(screen *screenp)
 			screenp->draw_button(x - 1, y - 1, x + w + 1, y + h - 15, 1, 1);
             // Draw radar
             radars[i]->draw();
-            loadtext->write_xy(mapAreas[i].x, mapAreas[i].y + mapAreas[i].h, level_name[i], RED, 1);
+            loadtext->write_xy(mapAreas[i].x, mapAreas[i].y, level_name[i], RED, 1);
+            
+            char buf[20];
+            snprintf(buf, 20, "Enemies: %d", num_enemies[i]);
+            loadtext->write_xy(x + w + 3, y, buf, RED, 1);
+            snprintf(buf, 20, "Max level: %d", max_enemy_level[i]);
+            loadtext->write_xy(x + w + 3, y + 10, buf, RED, 1);
+            snprintf(buf, 20, "Avg level: %.1f", average_enemy_level[i]);
+            loadtext->write_xy(x + w + 3, y + 20, buf, RED, 1);
         }
         
 		screenp->buffer_to_screen(0, 0, 320, 200);
+		SDL_Delay(10);
 	}
 	
     while (mykeyboard[SDLK_q])

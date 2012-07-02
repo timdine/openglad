@@ -50,7 +50,7 @@ Sint32 quit(Sint32);
 
 
 
-Sint32 browse(screen *screenp);
+char* browse(screen *screenp);
 
 
 screen *myscreen;  // global for scen?
@@ -1681,10 +1681,13 @@ Sint32 do_load(screen *ascreen)
 
 
 
-void getLevelStats(screen* screenp, int* max_enemy_level, float* average_enemy_level, int* num_enemies)
+void getLevelStats(screen* screenp, int* max_enemy_level, float* average_enemy_level, int* num_enemies, float* difficulty)
 {
     int num = 0;
     int level_sum = 0;
+    
+    int level_sum_friends = 0;
+    
     int max_level = 0;
     
     oblink* fx = screenp->oblist;
@@ -1693,12 +1696,19 @@ void getLevelStats(screen* screenp, int* max_enemy_level, float* average_enemy_l
 		if(fx->ob)
 		{
 		    walker* ob = fx->ob;
-		    if(ob->team_num != 0 && ob->query_order() == ORDER_LIVING)
+		    if(ob->query_order() == ORDER_LIVING)
 		    {
-                num++;
-                level_sum += ob->stats->level;
-                if(ob->stats->level > max_level)
-                    max_level = ob->stats->level;
+		        if(ob->team_num != 0)
+                {
+                    num++;
+                    level_sum += ob->stats->level;
+                    if(ob->stats->level > max_level)
+                        max_level = ob->stats->level;
+                }
+                else
+                {
+                    level_sum_friends += ob->stats->level;
+                }
 		    }
 		}
 		
@@ -1711,6 +1721,8 @@ void getLevelStats(screen* screenp, int* max_enemy_level, float* average_enemy_l
         *average_enemy_level = 0;
     else
         *average_enemy_level = level_sum/float(num);
+    
+    *difficulty = level_sum - level_sum_friends;
 }
 
 
@@ -1756,11 +1768,39 @@ list<string> list_files(const string& dirname)
     return fileList;
 }
 
-
+bool sort_scen(const string& first, const string& second)
+{
+    string s1;
+    string s1num;
+    string s2;
+    string s2num;
+    
+    bool gotNum = false;
+    for(string::const_iterator e = first.begin(); e != first.end(); e++)
+    {
+        if(!gotNum && isalpha(*e))
+            s1 += *e;
+        else
+            s1num += *e;
+    }
+    
+    gotNum = false;
+    for(string::const_iterator e = second.begin(); e != second.end(); e++)
+    {
+        if(!gotNum && isalpha(*e))
+            s2 += *e;
+        else
+            s2num += *e;
+    }
+    
+    if(s1 == s2)
+        return (atoi(s1num.c_str()) < atoi(s2num.c_str()));
+    return (first < second);
+}
 
 void load_level_list(char**& level_list, int* level_list_length)
 {
-    // TODO: Do some real directory browsing
+    // Do some directory browsing
     list<string> ls = list_files("scen");
     for(list<string>::iterator e = ls.begin(); e != ls.end();)
     {
@@ -1772,6 +1812,8 @@ void load_level_list(char**& level_list, int* level_list_length)
         else
             e = ls.erase(e);
     }
+    
+    ls.sort(sort_scen);
     
     *level_list_length = ls.size();
     level_list = new char*[ls.size()];
@@ -1795,6 +1837,7 @@ class BrowserEntry
     int max_enemy_level;
     float average_enemy_level;
     int num_enemies;
+    float difficulty;
     oblink* oblist;
     oblink* fxlist;
     oblink* weaplist;
@@ -1803,25 +1846,37 @@ class BrowserEntry
     BrowserEntry(screen* screenp, int index, const char* filename);
     ~BrowserEntry();
     
-    void draw(screen* screenp, text* loadtext);
+    void draw(screen* screenp, text* loadtext, const char* filename);
 };
 
 BrowserEntry::BrowserEntry(screen* screenp, int index, const char* filename)
 {
-    mapAreas.w = screenp->maxx;
-    mapAreas.h = screenp->maxy - 10;
-    mapAreas.x = 10;
-    mapAreas.y = 10 + (screenp->maxy + 0)*index;
+    // Clear the level so we can load the next one
+    remove_all_objects(screenp);  // kill current obs
+    for (int j=0; j < 60; j++)
+        screenp->scentext[j][0] = 0;
+        
     
     load_scenario(filename, screenp);
     
     radar* r = new radar(NULL, screenp, 0);
-    r->xloc = mapAreas.x + mapAreas.w/2;
-    r->yloc = mapAreas.y + 10;
     r->start();
     radars = r;
     
-    getLevelStats(screenp, &max_enemy_level, &average_enemy_level, &num_enemies);
+
+    int w = radars->xview;
+    int h = radars->yview;
+    
+    mapAreas.w = w;
+    mapAreas.h = h;
+    mapAreas.x = 10;
+    mapAreas.y = 10 + (53 + 10)*index;
+    
+    r->xloc = mapAreas.x + mapAreas.w/2 - w/2;
+    r->yloc = mapAreas.y + 10;
+    
+    
+    getLevelStats(screenp, &max_enemy_level, &average_enemy_level, &num_enemies, &difficulty);
     
     // Store this level's objects
     oblist = screenp->oblist;
@@ -1839,11 +1894,6 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, const char* filename)
         level_name[22] = '.';
         level_name[23] = '\0';
     }
-    
-    // Clear the level so we can load the next one
-    remove_all_objects(screenp);  // kill current obs
-    for (int j=0; j < 60; j++)
-        screenp->scentext[j][0] = 0;
 }
 
 
@@ -1888,7 +1938,7 @@ BrowserEntry::~BrowserEntry()
     delete[] level_name;
 }
 
-void BrowserEntry::draw(screen* screenp, text* loadtext)
+void BrowserEntry::draw(screen* screenp, text* loadtext, const char* filename)
 {
     // Set the current objects
     screenp->oblist = oblist;
@@ -1897,28 +1947,34 @@ void BrowserEntry::draw(screen* screenp, text* loadtext)
     
     int x = radars->xloc;
     int y = radars->yloc;
-    int w = radars->sizex;
-    int h = radars->sizey;
-    screenp->draw_button(x - 1, y - 1, x + w + 1, y + h - 15, 1, 1);
+    int w = radars->xview;
+    int h = radars->yview;
+    screenp->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
     // Draw radar
     radars->draw();
     loadtext->write_xy(mapAreas.x, mapAreas.y, level_name, RED, 1);
     
     char buf[20];
+    snprintf(buf, 20, "%s", filename);
+    loadtext->write_xy(x + w + 5, y, buf, RED, 1);
     snprintf(buf, 20, "Enemies: %d", num_enemies);
-    loadtext->write_xy(x + w + 3, y, buf, RED, 1);
+    loadtext->write_xy(x + w + 5, y + 10, buf, RED, 1);
     snprintf(buf, 20, "Max level: %d", max_enemy_level);
-    loadtext->write_xy(x + w + 3, y + 10, buf, RED, 1);
+    loadtext->write_xy(x + w + 5, y + 20, buf, RED, 1);
     snprintf(buf, 20, "Avg level: %.1f", average_enemy_level);
-    loadtext->write_xy(x + w + 3, y + 20, buf, RED, 1);
+    loadtext->write_xy(x + w + 5, y + 30, buf, RED, 1);
+    snprintf(buf, 20, "Difficulty: %.0f", difficulty);
+    loadtext->write_xy(x + w + 5, y + 40, buf, RED, 1);
 }
 
 
 #define NUM_BROWSE_RADARS 3
 
 // Load a grid or scenario ..
-Sint32 browse(screen *screenp)
+char* browse(screen *screenp)
 {
+    char* result = NULL;
+    
     // Clear all objects from the current level
     remove_all_objects(screenp);  // kill current obs
     for (int j=0; j < 60; j++)
@@ -1989,13 +2045,87 @@ Sint32 browse(screen *screenp)
             while (mykeyboard[SDLK_PERIOD])
                 get_input_events(WAIT);
 		}
+		
+		// Mouse stuff ..
+		mymouse = query_mouse();
+		if (mymouse[MOUSE_LEFT])       // put or remove the current guy
+		{
+		    while(mymouse[MOUSE_LEFT])
+                get_input_events(WAIT);
+		    
+			int mx = mymouse[MOUSE_X];
+			int my = mymouse[MOUSE_Y];
+			
+            
+            int screenW = 300;
+            int screenH = 160;
+            // Prev
+            if(screenW - 20 <= mx && mx <= screenW - 10
+               && 20 <= my && my <= 30)
+               {
+                    if(current_level_index > 0)
+                    {
+                        current_level_index--;
+                        
+                        for(int i = 0; i < NUM_BROWSE_RADARS; i++)
+                        {
+                            delete entries[i];
+                            entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
+                        }
+                    }
+               }
+            // Next
+            else if(screenW - 20 <= mx && mx <= screenW - 10
+               && screenH - 20 <= my && my <= screenH - 10)
+               {
+                    if(current_level_index < level_list_length - NUM_BROWSE_RADARS)
+                    {
+                        current_level_index++;
+                        
+                        for(int i = 0; i < NUM_BROWSE_RADARS; i++)
+                        {
+                            delete entries[i];
+                            entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
+                        }
+                    }
+               }
+			else
+			{
+                // Choose
+                for(int i = 0; i < NUM_BROWSE_RADARS; i++)
+                {
+                    int x = entries[i]->radars->xloc;
+                    int y = entries[i]->radars->yloc;
+                    int w = entries[i]->radars->xview;
+                    int h = entries[i]->radars->yview;
+                    SDL_Rect b = {x - 2, y - 2, w + 2, h + 2};
+                    if(b.x <= mx && mx <= b.x+b.w
+                       && b.y <= my && my <= b.y+b.h)
+                       {
+                           result = new char[strlen(level_list[current_level_index + i])+1];
+                           strcpy(result, level_list[current_level_index + i]);
+                           done = true;
+                           break;
+                       }
+                }
+			}
+		}
+		
         
         // Draw
         screenp->clearscreen();
         
+        int screenW = 300;
+        int screenH = 160;
+        screenp->draw_button(screenW - 20, 20, 10, 10, 1, 1);
+        loadtext->write_xy(screenW - 20, 20, "Prev", RED, 1);
+        screenp->draw_button(screenW - 20, screenH - 20, 10, 10, 1, 1);
+        loadtext->write_xy(screenW - 20, screenH - 20, "Next", RED, 1);
+        
+        
         for(int i = 0; i < NUM_BROWSE_RADARS; i++)
         {
-            entries[i]->draw(screenp, loadtext);
+            entries[i]->draw(screenp, loadtext, level_list[current_level_index + i]);
         }
         
 		screenp->buffer_to_screen(0, 0, 320, 200);
@@ -2018,10 +2148,13 @@ Sint32 browse(screen *screenp)
     }
     delete[] level_list;
     
-    load_scenario("test", screenp);
-    screenp->buffer_to_screen(0, 0, 320, 200);
     
-	return 1;
+    // Clear all objects from the current level
+    remove_all_objects(screenp);  // kill current obs
+    for (int j=0; j < 60; j++)
+        screenp->scentext[j][0] = 0;
+    
+	return result;
 }
 
 

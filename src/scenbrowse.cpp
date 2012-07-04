@@ -1675,13 +1675,22 @@ Sint32 do_load(screen *ascreen)
 
 
 
+#include <list>
+#include <string>
+
+#include <cstdio>
+#include <sys/stat.h>
+#include <dirent.h>
+
+using namespace std;
 
 
 
 
 
 
-void getLevelStats(screen* screenp, int* max_enemy_level, float* average_enemy_level, int* num_enemies, float* difficulty)
+
+void getLevelStats(screen* screenp, int* max_enemy_level, float* average_enemy_level, int* num_enemies, float* difficulty, list<int>& exits)
 {
     int num = 0;
     int level_sum = 0;
@@ -1689,26 +1698,51 @@ void getLevelStats(screen* screenp, int* max_enemy_level, float* average_enemy_l
     int level_sum_friends = 0;
     
     int max_level = 0;
+    exits.clear();
     
+    // Go through objects
     oblink* fx = screenp->oblist;
 	while(fx)
 	{
 		if(fx->ob)
 		{
 		    walker* ob = fx->ob;
-		    if(ob->query_order() == ORDER_LIVING)
+		    switch(ob->query_order())
 		    {
-		        if(ob->team_num != 0)
-                {
-                    num++;
-                    level_sum += ob->stats->level;
-                    if(ob->stats->level > max_level)
-                        max_level = ob->stats->level;
-                }
-                else
-                {
-                    level_sum_friends += ob->stats->level;
-                }
+		        case ORDER_LIVING:
+                    if(ob->team_num != 0)
+                    {
+                        num++;
+                        level_sum += ob->stats->level;
+                        if(ob->stats->level > max_level)
+                            max_level = ob->stats->level;
+                    }
+                    else
+                    {
+                        level_sum_friends += ob->stats->level;
+                    }
+                break;
+		    }
+		}
+		
+		fx = fx->next;
+	}
+	
+	// Go through effects
+	fx = screenp->fxlist;
+	while(fx)
+	{
+		if(fx->ob)
+		{
+		    walker* ob = fx->ob;
+		    switch(ob->query_order())
+		    {
+                case ORDER_TREASURE:
+                    if(ob->query_family() == FAMILY_EXIT)
+                    {
+                        exits.push_back(ob->stats->level);
+                    }
+                break;
 		    }
 		}
 		
@@ -1723,17 +1757,11 @@ void getLevelStats(screen* screenp, int* max_enemy_level, float* average_enemy_l
         *average_enemy_level = level_sum/float(num);
     
     *difficulty = level_sum - level_sum_friends;
+    
+    exits.sort();
+    exits.unique();
 }
 
-
-#include <list>
-#include <string>
-
-#include <cstdio>
-#include <sys/stat.h>
-#include <dirent.h>
-
-using namespace std;
 
 bool isDir(const string& filename)
 {
@@ -1842,6 +1870,9 @@ class BrowserEntry
     oblink* fxlist;
     oblink* weaplist;
     char* level_name;
+    list<int> exits;
+    char scentext[80][80];                         // Array to hold scenario information
+    char scentextlines;                    // How many lines of text in scenario info
     
     BrowserEntry(screen* screenp, int index, const char* filename);
     ~BrowserEntry();
@@ -1870,13 +1901,13 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, const char* filename)
     mapAreas.w = w;
     mapAreas.h = h;
     mapAreas.x = 10;
-    mapAreas.y = 10 + (53 + 10)*index;
+    mapAreas.y = 5 + (53 + 12)*index;
     
     r->xloc = mapAreas.x + mapAreas.w/2 - w/2;
     r->yloc = mapAreas.y + 10;
     
     
-    getLevelStats(screenp, &max_enemy_level, &average_enemy_level, &num_enemies, &difficulty);
+    getLevelStats(screenp, &max_enemy_level, &average_enemy_level, &num_enemies, &difficulty, exits);
     
     // Store this level's objects
     oblist = screenp->oblist;
@@ -1893,6 +1924,12 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, const char* filename)
         level_name[21] = '.';
         level_name[22] = '.';
         level_name[23] = '\0';
+    }
+    
+    scentextlines = screenp->scentextlines;
+    for(int i = 0; i < scentextlines; i++)
+    {
+        strncpy(scentext[i], screenp->scentext[i], 80);
     }
 }
 
@@ -1952,19 +1989,40 @@ void BrowserEntry::draw(screen* screenp, text* loadtext, const char* filename)
     screenp->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
     // Draw radar
     radars->draw();
-    loadtext->write_xy(mapAreas.x, mapAreas.y, level_name, RED, 1);
+    loadtext->write_xy(mapAreas.x, mapAreas.y, level_name, DARK_BLUE, 1);
     
-    char buf[20];
-    snprintf(buf, 20, "%s", filename);
-    loadtext->write_xy(x + w + 5, y, buf, RED, 1);
-    snprintf(buf, 20, "Enemies: %d", num_enemies);
-    loadtext->write_xy(x + w + 5, y + 10, buf, RED, 1);
-    snprintf(buf, 20, "Max level: %d", max_enemy_level);
-    loadtext->write_xy(x + w + 5, y + 20, buf, RED, 1);
-    snprintf(buf, 20, "Avg level: %.1f", average_enemy_level);
-    loadtext->write_xy(x + w + 5, y + 30, buf, RED, 1);
-    snprintf(buf, 20, "Difficulty: %.0f", difficulty);
-    loadtext->write_xy(x + w + 5, y + 40, buf, RED, 1);
+    char buf[30];
+    snprintf(buf, 30, "%s", filename);
+    loadtext->write_xy(x + w + 5, y, buf, WHITE, 1);
+    snprintf(buf, 30, "Enemies: %d", num_enemies);
+    loadtext->write_xy(x + w + 5, y + 8, buf, WHITE, 1);
+    snprintf(buf, 30, "Max level: %d", max_enemy_level);
+    loadtext->write_xy(x + w + 5, y + 16, buf, WHITE, 1);
+    snprintf(buf, 30, "Avg level: %.1f", average_enemy_level);
+    loadtext->write_xy(x + w + 5, y + 24, buf, WHITE, 1);
+    snprintf(buf, 30, "Difficulty: %.0f", difficulty);
+    loadtext->write_xy(x + w + 5, y + 32, buf, RED, 1);
+    
+    if(exits.size() > 0)
+    {
+        snprintf(buf, 30, "Exits: ");
+        bool first = true;
+        for(list<int>::iterator e = exits.begin(); e != exits.end(); e++)
+        {
+            char buf2[10];
+            snprintf(buf2, 10, (first? "%d" : ", %d"), *e);
+            strncat(buf, buf2, 30);
+            first = false;
+        }
+        if(strlen(buf) > 19)
+        {
+            buf[17] = '.';
+            buf[18] = '.';
+            buf[19] = '.';
+            buf[20] = '\0';
+        }
+        loadtext->write_xy(x + w + 5, y + 40, buf, WHITE, 1);
+    }
 }
 
 
@@ -1997,6 +2055,18 @@ char* browse(screen *screenp)
         entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
     }
     
+    int selected_entry = -1;
+    
+    // Buttons
+    int screenW = 320;
+    int screenH = 200;
+    SDL_Rect prev = {screenW - 150, 20, 30, 10};
+    SDL_Rect next = {screenW - 150, screenH - 50, 30, 10};
+    SDL_Rect descbox = {prev.x - 40, prev.y + 15, 185, next.y - 10 - (prev.y + prev.h)};
+    
+    SDL_Rect choose = {screenW - 50, screenH - 30, 30, 10};
+    SDL_Rect cancel = {screenW - 100, screenH - 30, 38, 10};
+    
     bool done = false;
 	while (!done)
 	{
@@ -2013,11 +2083,13 @@ char* browse(screen *screenp)
 		if(mykeyboard[SDLK_q])
             done = true;
             
-		if(mykeyboard[SDLK_COMMA])
+		if(mykeyboard[SDLK_UP])
 		{
 		    // Scroll up
 		    if(current_level_index > 0)
 		    {
+                selected_entry = -1;
+		    
                 current_level_index--;
                 
                 for(int i = 0; i < NUM_BROWSE_RADARS; i++)
@@ -2026,14 +2098,16 @@ char* browse(screen *screenp)
                     entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
                 }
 		    }
-            while (mykeyboard[SDLK_COMMA])
+            while (mykeyboard[SDLK_UP])
                 get_input_events(WAIT);
 		}
-		if(mykeyboard[SDLK_PERIOD])
+		if(mykeyboard[SDLK_DOWN])
 		{
 		    // Scroll down
 		    if(current_level_index < level_list_length - NUM_BROWSE_RADARS)
 		    {
+                selected_entry = -1;
+		    
                 current_level_index++;
                 
                 for(int i = 0; i < NUM_BROWSE_RADARS; i++)
@@ -2042,7 +2116,7 @@ char* browse(screen *screenp)
                     entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
                 }
 		    }
-            while (mykeyboard[SDLK_PERIOD])
+            while (mykeyboard[SDLK_DOWN])
                 get_input_events(WAIT);
 		}
 		
@@ -2056,15 +2130,15 @@ char* browse(screen *screenp)
 			int mx = mymouse[MOUSE_X];
 			int my = mymouse[MOUSE_Y];
 			
+		    
             
-            int screenW = 300;
-            int screenH = 160;
             // Prev
-            if(screenW - 20 <= mx && mx <= screenW - 10
-               && 20 <= my && my <= 30)
+            if(prev.x <= mx && mx <= prev.x + prev.w
+               && prev.y <= my && my <= prev.y + prev.h)
                {
                     if(current_level_index > 0)
                     {
+                        selected_entry = -1;
                         current_level_index--;
                         
                         for(int i = 0; i < NUM_BROWSE_RADARS; i++)
@@ -2075,11 +2149,12 @@ char* browse(screen *screenp)
                     }
                }
             // Next
-            else if(screenW - 20 <= mx && mx <= screenW - 10
-               && screenH - 20 <= my && my <= screenH - 10)
+            else if(next.x <= mx && mx <= next.x + next.w
+               && next.y <= my && my <= next.y + next.h)
                {
                     if(current_level_index < level_list_length - NUM_BROWSE_RADARS)
                     {
+                        selected_entry = -1;
                         current_level_index++;
                         
                         for(int i = 0; i < NUM_BROWSE_RADARS; i++)
@@ -2089,9 +2164,29 @@ char* browse(screen *screenp)
                         }
                     }
                }
+            // Choose
+			else if(choose.x <= mx && mx <= choose.x + choose.w
+               && choose.y <= my && my <= choose.y + choose.h)
+               {
+                   if(selected_entry != -1)
+                   {
+                       result = new char[strlen(level_list[current_level_index + selected_entry])+1];
+                       strcpy(result, level_list[current_level_index + selected_entry]);
+                       done = true;
+                       break;
+                   }
+               }
+            // Cancel
+			else if(cancel.x <= mx && mx <= cancel.x + cancel.w
+               && cancel.y <= my && my <= cancel.y + cancel.h)
+               {
+                   done = true;
+                   break;
+               }
 			else
 			{
-                // Choose
+                selected_entry = -1;
+                // Select
                 for(int i = 0; i < NUM_BROWSE_RADARS; i++)
                 {
                     int x = entries[i]->radars->xloc;
@@ -2102,9 +2197,7 @@ char* browse(screen *screenp)
                     if(b.x <= mx && mx <= b.x+b.w
                        && b.y <= my && my <= b.y+b.h)
                        {
-                           result = new char[strlen(level_list[current_level_index + i])+1];
-                           strcpy(result, level_list[current_level_index + i]);
-                           done = true;
+                           selected_entry = i;
                            break;
                        }
                 }
@@ -2115,18 +2208,37 @@ char* browse(screen *screenp)
         // Draw
         screenp->clearscreen();
         
-        int screenW = 300;
-        int screenH = 160;
-        screenp->draw_button(screenW - 20, 20, 10, 10, 1, 1);
-        loadtext->write_xy(screenW - 20, 20, "Prev", RED, 1);
-        screenp->draw_button(screenW - 20, screenH - 20, 10, 10, 1, 1);
-        loadtext->write_xy(screenW - 20, screenH - 20, "Next", RED, 1);
-        
+        screenp->draw_button(prev.x, prev.y, prev.x + prev.w, prev.y + prev.h, 1, 1);
+        loadtext->write_xy(prev.x + 2, prev.y + 2, "Prev", DARK_BLUE, 1);
+        screenp->draw_button(next.x, next.y, next.x + next.w, next.y + next.h, 1, 1);
+        loadtext->write_xy(next.x + 2, next.y + 2, "Next", DARK_BLUE, 1);
+        if(selected_entry != -1)
+        {
+            screenp->draw_button(choose.x, choose.y, choose.x + choose.w, choose.y + choose.h, 1, 1);
+            loadtext->write_xy(choose.x + 9, choose.y + 2, "OK", DARK_GREEN, 1);
+            loadtext->write_xy(next.x, choose.y + 20, entries[selected_entry]->level_name, DARK_GREEN, 1);
+        }
+        screenp->draw_button(cancel.x, cancel.y, cancel.x + cancel.w, cancel.y + cancel.h, 1, 1);
+        loadtext->write_xy(cancel.x + 2, cancel.y + 2, "Cancel", RED, 1);
         
         for(int i = 0; i < NUM_BROWSE_RADARS; i++)
         {
             entries[i]->draw(screenp, loadtext, level_list[current_level_index + i]);
         }
+        
+        // Description
+        if(selected_entry != -1)
+        {
+            
+            screenp->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
+            for(int i = 0; i < entries[selected_entry]->scentextlines; i++)
+            {
+                if(prev.y + 20 + 10*i+1 > descbox.y + descbox.h)
+                    break;
+                loadtext->write_xy(descbox.x, descbox.y + 10*i+1, entries[selected_entry]->scentext[i], BLACK, 1);
+            }
+        }
+        
         
 		screenp->buffer_to_screen(0, 0, 320, 200);
 		SDL_Delay(10);

@@ -350,8 +350,15 @@ int main(int argc, char **argv)
 		// Browse
 		if (mykeyboard[SDLK_b])
 		{
-			browse(myscreen);
+			char* result = browse(myscreen);
 			myscreen->clearfontbuffer();
+			if(result)
+			{
+			    load_scenario(result, myscreen);
+                myscreen->viewob[0]->myradar->start();
+                myscreen->viewob[0]->myradar->update();
+			    delete[] result;
+			}
 		}
 
 
@@ -1887,7 +1894,7 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, const char* filename)
     for (int j=0; j < 60; j++)
         screenp->scentext[j][0] = 0;
         
-    
+    // bool loaded = load_scenario(filename, screenp);
     load_scenario(filename, screenp);
     
     radar* r = new radar(NULL, screenp, 0);
@@ -2221,6 +2228,15 @@ char* browse(screen *screenp)
         screenp->draw_button(cancel.x, cancel.y, cancel.x + cancel.w, cancel.y + cancel.h, 1, 1);
         loadtext->write_xy(cancel.x + 2, cancel.y + 2, "Cancel", RED, 1);
         
+        if(selected_entry != -1)
+        {
+            int i = selected_entry;
+            int x = entries[i]->radars->xloc - 4;
+            int y = entries[i]->radars->yloc - 4;
+            int w = entries[i]->radars->xview + 8;
+            int h = entries[i]->radars->yview + 8;
+            screenp->draw_box(x, y, x + w, y + h, DARK_BLUE, 1, 1);
+        }
         for(int i = 0; i < NUM_BROWSE_RADARS; i++)
         {
             entries[i]->draw(screenp, loadtext, level_list[current_level_index + i]);
@@ -2229,7 +2245,6 @@ char* browse(screen *screenp)
         // Description
         if(selected_entry != -1)
         {
-            
             screenp->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
             for(int i = 0; i < entries[selected_entry]->scentextlines; i++)
             {
